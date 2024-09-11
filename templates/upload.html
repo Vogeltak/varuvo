@@ -3,124 +3,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ellens Varuvo gereedschap</title>
-    <!-- <script src="https://unpkg.com/htmx.org@1.9.5"></script> -->
-    <script src="https://unpkg.com/htmx.org@2.0.2"></script>
+    <title>Ellens Varuvo</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            background: #f1ebf3;
+            font-family: sans-serif;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #fff;
         }
         #dropzone {
             width: 300px;
             height: 200px;
-            border: 3px dashed #ccc;
-            border-radius: 10px;
+            border: 2px dashed #333;
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 20px;
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
-            text-align: center;
-            font-size: 1.2em;
-            color: #222;
-            cursor: pointer;
-            transition: background-color 0.1s, border-color 0.1s;
         }
-        #dropzone.highlight {
-            background-color: #00000022;
-            border-color: #bbb;
+        #dropzone.dragover {
+            background-color: #e2d5e8;
         }
-        #file-list {
-            margin-top: 20px;
-            width: 300px;
+        #error-message {
+            color: red;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <!--
-    <div id="dropzone" 
-         hx-post="/process" 
-         hx-encoding="multipart/form-data"
-         hx-trigger="drop" 
-         hx-target="#progress"
-         hx-on:dragover="htmx.addClass(this, 'highlight')"
-         hx-on:dragleave="htmx.removeClass(this, 'highlight')"
-         hx-on:drop="htmx.removeClass(this, 'highlight')">
-        <p>Voer mij je Varuvo Excel</p>
+    <h1>Verrijk je Varuvo bestellingenoverzicht</h1>
+    <p>Download je bestelling via <a href="https://www.varuvo.nl/sales/order/history/">Mijn Varuvo</a> (klik op het Excel icoontje)</p>
+    <div id="dropzone">
+        <p>En sleep het dan hier naartoe</p>
+        <input type="file" id="fileInput" style="display: none;">
     </div>
-
-    <div id="progress"></div>
+    <p id="error-message"></p>
+    <p>Liefs van Max</p>
 
     <script>
         const dropzone = document.getElementById('dropzone');
-        dropzone.addEventListener('drop', function(event) {
-            event.preventDefault();
-            alert("hey you dropped a file!");
-        });
-    </script>
-    -->
-    <form id="dropzone" method="post" action="/process" enctype="multipart/form-data">
-        <p>Gooi je Varuvo bestelling hier</p>
-        <p>of</p>
-        <input type="file" id="fileElem" accept="*" style="display:none">
-        <button id="fileSelect">Zoek op je computer</button>
-    </form>
+        const fileInput = document.getElementById('fileInput');
+        const errorMessage = document.getElementById('error-message');
 
-    <script>
-        let dropZone = document.getElementById('dropzone');
-        let fileElem = document.getElementById('fileElem');
-
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) {
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('dragover', (e) => {
             e.preventDefault();
-            e.stopPropagation();
-        }
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, highlight, false);
+            dropzone.classList.add('dragover');
         });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, unhighlight, false);
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
         });
-
-        function highlight(e) {
-            dropZone.classList.add('highlight');
-        }
-
-        function unhighlight(e) {
-            dropZone.classList.remove('highlight');
-        }
-
-        dropZone.addEventListener('drop', handleDrop, false);
+        dropzone.addEventListener('drop', handleDrop);
+        fileInput.addEventListener('change', handleFileSelect);
 
         function handleDrop(e) {
-            let dt = e.dataTransfer;
-            let files = dt.files;
-            handleFiles(files);
-        }
-
-        function handleFiles(files) {
-            fileElem.files = files;
-            console.log(fileElem.files);
-            dropZone.submit();
-        }
-
-        let fileSelect = document.getElementById('fileSelect');
-
-        fileSelect.addEventListener('click', function(e) {
-            if (fileElem) {
-                fileElem.click();
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length) {
+                uploadFile(files[0]);
             }
-        });
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            if (files.length) {
+                uploadFile(files[0]);
+            }
+        }
+
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Clear any previous error messages
+            errorMessage.textContent = '';
+
+
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText);
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'BEREKEND_' + file.name;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error(error);
+                errorMessage.textContent = error.message;
+            }
+        }
     </script>
 </body>
 </html>

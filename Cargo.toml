@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = "1.0.86"
 axum = { version = "0.7.5", features = ["multipart"] }
 calamine = "0.25.0"
+chrono = "0.4.38"
 rust_xlsxwriter = "0.70.0"
 tempfile = "3.12.0"
 tokio = { version = "1.39.3", features = ["full"] }

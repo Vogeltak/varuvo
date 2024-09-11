@@ -1,31 +1,44 @@
 mod spreadsheet;
 
-use anyhow::{anyhow, Result};
-use axum::extract::multipart::Field;
-use axum::http::header;
-use std::fs::File;
-use std::io::{Cursor, Write};
+use axum::http::{header, StatusCode};
+use std::io::Cursor;
 
 use axum::extract::Multipart;
 use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
 use axum::Router;
+use chrono::prelude::*;
+
+fn log(msg: String) {
+    println!("{} - {}", Utc::now(), msg);
+}
 
 async fn upload_page() -> Html<&'static str> {
     Html(include_str!("../templates/upload.html"))
 }
 
 async fn process(mut multipart: Multipart) -> impl IntoResponse {
-    println!("Received a request to process a file");
+    log("received processing request".to_string());
 
     // Extract the XLSX file (hopefully)
     if let Ok(Some(field)) = multipart.next_field().await {
         let name = field.file_name().unwrap_or_default().to_string();
         let data = field.bytes().await.unwrap_or_default();
 
+        log(format!("└─ processing {name}"));
+
         let cursor = Cursor::new(data);
 
-        let res = spreadsheet::process_varuvo_export(cursor).unwrap();
+        let res = match spreadsheet::process_varuvo_export(cursor) {
+            Ok(res) => res,
+            Err(e) => {
+                log(format!("└─ failed during spreadsheet processing: {e}"));
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Er ging iets mis tijdens het bewerken van het Excel bestand",
+                ));
+            }
+        };
 
         let headers = [
             (
@@ -34,13 +47,14 @@ async fn process(mut multipart: Multipart) -> impl IntoResponse {
             ),
             (
                 header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"new-{}\"", name),
+                format!("attachment; filename=\"BEREKEND-{}\"", name),
             ),
         ];
 
         Ok((headers, res))
     } else {
-        Err("No file upload found")
+        log("└─ no file found".to_string());
+        Err((StatusCode::BAD_REQUEST, "No file upload found"))
     }
 }
 
