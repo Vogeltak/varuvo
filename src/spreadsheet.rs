@@ -134,7 +134,7 @@ pub fn process_varuvo_export(cursor: Cursor<axum::body::Bytes>) -> Result<Vec<u8
         )?;
 
         // Create our currency format for the cells we're adding.
-        let currency_format = Format::new().set_num_format("$#,##0.00");
+        let currency_format = Format::new().set_num_format("€#,##0.00");
 
         // Process rows containing the actual items.
         for (row_index, row) in range.rows().enumerate().skip(1) {
