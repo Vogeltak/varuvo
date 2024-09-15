@@ -30,13 +30,13 @@ const COLUMN_MAPPING: [&str; 26] = [
     "T", "U", "V", "W", "X", "Y", "Z",
 ];
 
-fn col_of(header: &str) -> usize {
+fn col_of(header: &str) -> Result<usize> {
     COLUMN_FILTER
         .iter()
         .enumerate()
         .find(|(_, &c)| c == header)
-        .unwrap()
-        .0
+        .map(|(i, _)| i)
+        .ok_or(anyhow!("failed to get column for {header}"))
 }
 
 fn write_cell(
@@ -102,14 +102,16 @@ pub fn process_varuvo_export(cursor: Cursor<axum::body::Bytes>) -> Result<Vec<u8
 
         // First write the headers to the new worksheet.
         if let Some(headers) = range.rows().next() {
-            headers
+            for (i, cell) in headers
                 .iter()
                 .enumerate()
                 // Select the columns that we want to keep.
                 .filter_map(|(i, cell)| col_to_keep.contains(&i).then_some(cell))
                 // Give them new column indices.
                 .enumerate()
-                .for_each(|(i, cell)| write_cell(worksheet, 0, i as u16, cell).unwrap())
+            {
+                write_cell(worksheet, 0, i as u16, cell)?;
+            }
         }
 
         // Add the headers for the columns we're adding to this sheet.
@@ -147,7 +149,7 @@ pub fn process_varuvo_export(cursor: Cursor<axum::body::Bytes>) -> Result<Vec<u8
                 .enumerate()
                 .collect::<Vec<_>>();
 
-            new_row.iter().for_each(|(i, cell)| {
+            for (i, cell) in new_row.iter() {
                 // Replace VAT strings with their actual percentages
                 let cell = match cell {
                     Data::String(s) => match s.as_str() {
@@ -157,8 +159,9 @@ pub fn process_varuvo_export(cursor: Cursor<axum::body::Bytes>) -> Result<Vec<u8
                     },
                     _ => cell,
                 };
-                write_cell(worksheet, row_index, *i as u16, cell).unwrap();
-            });
+
+                write_cell(worksheet, row_index, *i as u16, cell)?;
+            }
 
             // Account for 1-based row count in Excel.
             let formula_row = row_index + 1;
@@ -169,36 +172,32 @@ pub fn process_varuvo_export(cursor: Cursor<axum::body::Bytes>) -> Result<Vec<u8
             // Calculate subtotaal by multiplying the # of items (aantal) with
             // the sales price (AVP). Add it as a new column to the row.
             let col_subtotaal = next_free_col.get();
-            let col_aantal = col_of("Aantal");
-            let col_price = col_of("AVP");
+            let col_aantal = col_of("Aantal")?;
+            let col_price = col_of("AVP")?;
             let subtotaal = Formula::new(format!(
                 "={}{formula_row}*{}{formula_row}",
                 COLUMN_MAPPING[col_price], COLUMN_MAPPING[col_aantal]
             ));
-            worksheet
-                .write_formula_with_format(
-                    row_index as u32,
-                    col_subtotaal,
-                    subtotaal,
-                    &currency_format,
-                )
-                .unwrap();
+            worksheet.write_formula_with_format(
+                row_index as u32,
+                col_subtotaal,
+                subtotaal,
+                &currency_format,
+            )?;
 
             // Calculate the VAT over the subtotal.
             let col_btw_totaal = next_free_col.get();
             let btw_totaal = Formula::new(format!(
                 "={}{formula_row}*{}{formula_row}",
                 COLUMN_MAPPING[col_subtotaal as usize],
-                COLUMN_MAPPING[col_of("BTW")]
+                COLUMN_MAPPING[col_of("BTW")?]
             ));
-            worksheet
-                .write_formula_with_format(
-                    row_index as u32,
-                    col_btw_totaal,
-                    btw_totaal,
-                    &currency_format,
-                )
-                .unwrap();
+            worksheet.write_formula_with_format(
+                row_index as u32,
+                col_btw_totaal,
+                btw_totaal,
+                &currency_format,
+            )?;
 
             // Calculate the total amount.
             let col_totaal = next_free_col.get();
@@ -206,9 +205,12 @@ pub fn process_varuvo_export(cursor: Cursor<axum::body::Bytes>) -> Result<Vec<u8
                 "={}{formula_row} + {}{formula_row}",
                 COLUMN_MAPPING[col_subtotaal as usize], COLUMN_MAPPING[col_btw_totaal as usize]
             ));
-            worksheet
-                .write_formula_with_format(row_index as u32, col_totaal, totaal, &currency_format)
-                .unwrap();
+            worksheet.write_formula_with_format(
+                row_index as u32,
+                col_totaal,
+                totaal,
+                &currency_format,
+            )?;
         }
 
         let res_format = currency_format.set_bold();
@@ -221,9 +223,12 @@ pub fn process_varuvo_export(cursor: Cursor<axum::body::Bytes>) -> Result<Vec<u8
         for col in [7, 8, 9] {
             let col_idx = COLUMN_MAPPING[col];
             let formula = Formula::new(format!("=SUM({col_idx}2:{col_idx}{res_row})"));
-            worksheet
-                .write_formula_with_format(res_row as u32, col as u16, formula, &res_format)
-                .unwrap();
+            worksheet.write_formula_with_format(
+                res_row as u32,
+                col as u16,
+                formula,
+                &res_format,
+            )?;
         }
 
         worksheet.autofit();
