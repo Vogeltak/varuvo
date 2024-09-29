@@ -213,22 +213,24 @@ pub fn process_varuvo_export(cursor: Cursor<axum::body::Bytes>) -> Result<Vec<u8
             )?;
         }
 
-        let res_format = currency_format.set_bold();
+        let res_format_currency = currency_format.set_bold();
+        let bold_format = Format::new().set_bold();
 
         // Okay, crimes crimes, hardcoding column indices here.
 
         // Calculate sums for all our totals.
         let res_row = range.rows().skip(1).count();
-        // Assumptions: Subtotaal @ 7, BTW totaal @ 8, Totaal @ 9
-        for col in [7, 8, 9] {
+        // Assumptions: Aantal @ 6, Subtotaal @ 7, BTW totaal @ 8, Totaal @ 9
+        for col in [6, 7, 8, 9] {
             let col_idx = COLUMN_MAPPING[col];
             let formula = Formula::new(format!("=SUM({col_idx}2:{col_idx}{res_row})"));
-            worksheet.write_formula_with_format(
-                res_row as u32,
-                col as u16,
-                formula,
-                &res_format,
-            )?;
+
+            let format = match col {
+                6 => &bold_format,
+                _ => &res_format_currency,
+            };
+
+            worksheet.write_formula_with_format(res_row as u32, col as u16, formula, format)?;
         }
 
         worksheet.autofit();
